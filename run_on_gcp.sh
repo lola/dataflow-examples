@@ -1,6 +1,5 @@
 if [ "$#" -ne 5 ]; then
    echo "Usage:   ./run_oncloud.sh project-name  bucket-name  mainclass-basename kafka-server topic"
-   echo "Example: ./run_on_gcp.sh louisa-dataflow-demo kafkaio-test KafkaIoTest 10.128.0.2:9092 test"
    exit
 fi
 

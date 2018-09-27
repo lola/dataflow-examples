@@ -1,3 +1,19 @@
+
+// Licensed to the Apache Software Foundation (ASF) under one or more
+// contributor license agreements.  See the NOTICE file distributed with
+// this work for additional information regarding copyright ownership.
+// The ASF licenses this file to You under the Apache License, Version 2.0
+// (the "License"); you may not use this file except in compliance with
+// the License.  You may obtain a copy of the License at
+
+//    http://www.apache.org/licenses/LICENSE-2.0
+
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -36,17 +52,14 @@ public class KafkaIoTest {
 	public static interface MyOptions extends DataflowPipelineOptions {
 
 		@Description("Kafka Bootstrap Servers")
-        @Default.String("10.128.0.2:9092")
         String getBootstrap();
         void setBootstrap(String s);
 
 		@Description("Kafka Topic Name")
-        @Default.String("test")
         String getInputTopic();
         void setInputTopic(String s);
 
 		@Description("Output BigQuery table <project_id>:<dataset_id>.<table_id>")
-		@Default.String("louisa-dataflow-demo:demos.streamdemo")
 		String getOutput();
 		void setOutput(String s);
 
@@ -68,49 +81,47 @@ public class KafkaIoTest {
 		fields.add(new TableFieldSchema().setName("kafkamessage").setType("STRING"));
 		TableSchema schema = new TableSchema().setFields(fields);
 
-		p 
+		p.apply(KafkaIO.<Long, String>read()
+	        .withBootstrapServers(options.getBootstrap())
+	        .withTopic(options.getInputTopic())
+	        .withKeyDeserializer(LongDeserializer.class)
+	        .withValueDeserializer(StringDeserializer.class))
 
-				.apply(KafkaIO.<Long, String>read()
-			        .withBootstrapServers(options.getBootstrap())
-			        .withTopic(options.getInputTopic())
-			        .withKeyDeserializer(LongDeserializer.class)
-			        .withValueDeserializer(StringDeserializer.class))
+	    // .apply(Values.<String>create()) // PCollection<String>
 
-			    // .apply(Values.<String>create()) // PCollection<String>
-
-            	// .apply("window",
-            	// 	Window.<KafkaRecord<Long, String>>into(FixedWindows
-            	// 		.of(Duration.standardMinutes(1))))
+    	// .apply("window",
+    	// 	Window.<KafkaRecord<Long, String>>into(FixedWindows
+    	// 		.of(Duration.standardMinutes(1))))
 
 
-				.apply("window",
-						Window.into(SlidingWindows
-								.of(Duration.standardMinutes(2))
-								.every(Duration.standardSeconds(30)))) 
+		.apply("window",
+				Window.into(SlidingWindows
+						.of(Duration.standardMinutes(2))
+						.every(Duration.standardSeconds(30)))) 
 
-			    .apply("ExtractWords",ParDo.of(new DoFn<KafkaRecord<Long, String>, String>() {
-		            @ProcessElement
-		            public void processElement(ProcessContext c) throws Exception{
-		                KafkaRecord<Long, String> record = c.element();
-		                c.output(record.getKV().getValue());
-		            }
-		        }))
+	    .apply("ExtractWords",ParDo.of(new DoFn<KafkaRecord<Long, String>, String>() {
+            @ProcessElement
+            public void processElement(ProcessContext c) throws Exception{
+                KafkaRecord<Long, String> record = c.element();
+                c.output(record.getKV().getValue());
+            }
+        }))
 
 
-				.apply("ToBQRow", ParDo.of(new DoFn<String, TableRow>() {
-					@ProcessElement
-					public void processElement(ProcessContext c) throws Exception {
-						TableRow row = new TableRow();
-						row.set("timestamp", Instant.now().toString());
-						row.set("kafkamessage", c.element());
-						c.output(row);
-					}
-				}))
+		.apply("ToBQRow", ParDo.of(new DoFn<String, TableRow>() {
+			@ProcessElement
+			public void processElement(ProcessContext c) throws Exception {
+				TableRow row = new TableRow();
+				row.set("timestamp", Instant.now().toString());
+				row.set("kafkamessage", c.element());
+				c.output(row);
+			}
+		}))
 
-				.apply(BigQueryIO.writeTableRows().to(output)
-						.withSchema(schema)
-						.withWriteDisposition(BigQueryIO.Write.WriteDisposition.WRITE_APPEND)
-						.withCreateDisposition(BigQueryIO.Write.CreateDisposition.CREATE_IF_NEEDED));
+		.apply(BigQueryIO.writeTableRows().to(output)
+				.withSchema(schema)
+				.withWriteDisposition(BigQueryIO.Write.WriteDisposition.WRITE_APPEND)
+				.withCreateDisposition(BigQueryIO.Write.CreateDisposition.CREATE_IF_NEEDED));
 
 		p.run();
 	}
